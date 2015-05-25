@@ -5,6 +5,7 @@ from Crypto.Hash import SHA256
 from Crypto.Cipher import AES
 from Crypto.Util import Counter
 from PyQt4 import QtGui
+from os.path import expanduser
 import ConfigParser
 import base64
 from mobilepass import generate_mobilepass_token
@@ -17,10 +18,10 @@ class MobilePass:
         self.config = ConfigParser.RawConfigParser()
 
     def readConfig(self):
-        self.config.read('/home/gyuri/.mobilepass')
+        self.config.read(expanduser("~") + '/.mobilepass')
 
     def writeConfig(self):
-        with open('/home/gyuri/.mobilepass', 'wb') as configfile:
+        with open(expanduser("~") + '/.mobilepass', 'wb') as configfile:
             self.config.write(configfile)
 
     def genHash(self, passphrase):
