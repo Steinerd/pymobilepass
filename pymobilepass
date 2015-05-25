@@ -1,0 +1,131 @@
+#!/usr/bin/python
+
+import sys
+from Crypto.Hash import SHA256
+from Crypto.Cipher import AES
+from Crypto.Util import Counter
+from PyQt4 import QtGui
+import ConfigParser
+import base64
+from mobilepass import generate_mobilepass_token
+
+class MobilePass:
+
+    def __init__(self):
+        self.index = 0
+        self.key = "QVKYC-FM6KO-SY6F7-TR22W"
+        self.config = ConfigParser.RawConfigParser()
+
+    def readConfig(self):
+        self.config.read('/home/gyuri/.mobilepass')
+
+    def writeConfig(self):
+        with open('/home/gyuri/.mobilepass', 'wb') as configfile:
+            self.config.write(configfile)
+
+    def genHash(self, passphrase):
+        #Generate a encryption key from the passphrase (missing: salt)
+        pass_hash = SHA256.new()
+        pass_hash.update(passphrase)
+        return pass_hash.digest()
+
+    def genToken(self, passphrase):
+        policy = ""
+
+        self.loadKey(passphrase)
+        token = generate_mobilepass_token(self.key, self.index, policy)   # 374844
+        self.index += 1
+
+        self.readConfig()
+        self.config.set('MobilePass', 'index', self.index)
+        self.writeConfig()
+        return token
+
+    def saveKey(self, newkey, passphrase):
+
+        #Encrypt the key with AES in CTR mode
+        ctr = Counter.new(128)
+        cipher = AES.new(self.genHash(passphrase), AES.MODE_CTR, counter=ctr)
+        ct = cipher.encrypt(newkey)
+
+        self.config.add_section('MobilePass')
+        self.config.set('MobilePass', 'key', base64.b64encode(ct))
+        self.config.set('MobilePass', 'index', 0)
+        self.key = newkey
+        self.index = 0
+        self.writeConfig()
+
+    def loadKey(self, passphrase):
+
+        self.readConfig()
+        ct = base64.b64decode(self.config.get('MobilePass', 'key'))
+        self.index = int(self.config.get('MobilePass', 'index'))
+        ctr = Counter.new(128)
+        cipher = AES.new(self.genHash(passphrase), AES.MODE_CTR, counter=ctr)
+        self.key = str(cipher.decrypt(ct))
+
+class MainWindow(QtGui.QWidget):
+
+    def __init__(self):
+        super(MainWindow, self).__init__()
+        self.initUI()
+        self.mobilePass = MobilePass()
+
+    def initUI(self):
+
+        self.setGeometry(300, 300, 250, 150)
+        self.setWindowTitle('PyMobilePass')
+
+        btnEnroll = QtGui.QPushButton('Enroll new key', self)
+        btnEnroll.resize(btnEnroll.sizeHint())
+        btnToken = QtGui.QPushButton('Generate Token', self)
+        btnToken.resize(btnToken.sizeHint())
+        self.lbl = QtGui.QLabel(self)
+
+        btnEnroll.clicked.connect(self.enroll)
+        btnToken.clicked.connect(self.generateToken)
+
+        vbox = QtGui.QVBoxLayout()
+        vbox.addWidget(btnEnroll)
+        vbox.addWidget(btnToken)
+        vbox.addWidget(self.lbl)
+        self.setLayout(vbox)
+        self.show()
+
+    def error(self, message):
+        errorMessage=QtGui.QErrorMessage(self)
+        errorMessage.showMessage(message)
+
+    def enroll(self):
+        newkey, ok = QtGui.QInputDialog.getText(self, 'Input Dialog',
+            'Enter the new key:')
+        if ok:
+            passphrase, ok = QtGui.QInputDialog.getText(self, 'Input Dialog',
+            'Enter a passphrase:')
+            if ok:
+                try:
+                    self.mobilePass.saveKey(newkey.toAscii(), passphrase)
+                except Exception as e:
+                    self.error(e.message)
+
+    def generateToken(self):
+        passphrase, ok = QtGui.QInputDialog.getText(self, 'Input Dialog',
+            'Enter a passphrase:')
+        if ok:
+            try:
+                token = self.mobilePass.genToken(passphrase)
+            except Exception as e:
+                self.error(e.message)
+                return
+
+            self.lbl.setText(token)
+            self.lbl.resize(self.lbl.sizeHint())
+
+def main():
+
+    app = QtGui.QApplication(sys.argv)
+    win = MainWindow()
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main() #aaa
